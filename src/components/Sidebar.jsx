@@ -1,20 +1,21 @@
 import React, { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { 
-  ShieldAlert, 
+  ShieldCheck, 
   LayoutDashboard, 
-  UploadCloud, 
+  FolderKanban, 
   Layers, 
   GitFork, 
   Bug, 
   FileCheck, 
-  AlertTriangle, 
+  Scale, 
   FileCode2, 
   CheckSquare, 
-  Lightbulb,
-  FileCheck2,
+  Lightbulb, 
+  FileCheck2, 
   ChevronLeft, 
-  ChevronRight 
+  ChevronRight,
+  Sparkles
 } from 'lucide-react'
 import { useProjects } from '../context/ProjectContext'
 
@@ -23,93 +24,166 @@ export default function Sidebar() {
   const { selectedProject } = useProjects()
   const location = useLocation()
 
-  const pid = selectedProject?._id || 'demo-proj-001'
+  const pid = selectedProject?._id
 
-  const navItems = [
-    { label: 'Dashboard', path: '/', icon: LayoutDashboard },
-    { label: 'Upload & Scan', path: '/upload', icon: UploadCloud },
-    { label: 'Dependencies', path: `/projects/${pid}/dependencies`, icon: Layers },
-    { label: 'Dependency Graph', path: `/projects/${pid}/graph`, icon: GitFork },
-    { label: 'Vulnerabilities', path: `/projects/${pid}/vulnerabilities`, icon: Bug },
-    { label: 'License Compliance', path: `/projects/${pid}/licenses`, icon: FileCheck },
-    { label: 'Risk Analysis', path: `/projects/${pid}/risk`, icon: AlertTriangle },
-    { label: 'SBOM Generator', path: `/projects/${pid}/sbom`, icon: FileCode2 },
-    { label: 'Policy Rules', path: `/projects/${pid}/policies`, icon: CheckSquare },
-    { label: 'Recommendations', path: `/projects/${pid}/recommendations`, icon: Lightbulb },
-    { label: 'Compliance Report', path: `/projects/${pid}/report`, icon: FileCheck2 }
+  const navGroups = [
+    {
+      title: 'Overview',
+      items: [
+        { label: 'Overview', path: '/', icon: LayoutDashboard },
+        { label: 'Projects', path: '/projects', icon: FolderKanban }
+      ]
+    },
+    {
+      title: 'Analysis',
+      items: [
+        { label: 'Dependencies', path: pid ? `/projects/${pid}/dependencies` : '/dependencies', icon: Layers },
+        { label: 'Dependency Graph', path: pid ? `/projects/${pid}/graph` : '/graph', icon: GitFork },
+        { label: 'Vulnerabilities', path: pid ? `/projects/${pid}/vulnerabilities` : '/vulnerabilities', icon: Bug },
+        { label: 'Licenses', path: pid ? `/projects/${pid}/licenses` : '/licenses', icon: FileCheck },
+        { label: 'Risk Analysis', path: pid ? `/projects/${pid}/risk` : '/risk', icon: Scale }
+      ]
+    },
+    {
+      title: 'Compliance',
+      items: [
+        { label: 'SBOM', path: pid ? `/projects/${pid}/sbom` : '/sbom', icon: FileCode2 },
+        { label: 'Policy Rules', path: pid ? `/projects/${pid}/policies` : '/policies', icon: CheckSquare },
+        { label: 'Recommendations', path: pid ? `/projects/${pid}/recommendations` : '/recommendations', icon: Lightbulb },
+        { label: 'Compliance Reports', path: pid ? `/projects/${pid}/report` : '/report', icon: FileCheck2 }
+      ]
+    }
   ]
 
   const isActive = (itemPath) => {
     if (itemPath === '/') return location.pathname === '/'
-    if (itemPath === '/upload') return location.pathname === '/upload'
-    const routeType = itemPath.split('/')[3]
-    return location.pathname.includes(`/${routeType}`)
+    if (itemPath === '/projects') return location.pathname === '/projects'
+    const parts = itemPath.split('/')
+    const routeType = parts[parts.length - 1]
+    return location.pathname.endsWith(`/${routeType}`) || location.pathname.includes(`/${routeType}/`)
   }
 
   return (
-    <aside className={`relative flex flex-col bg-slate-950/90 backdrop-blur-2xl border-r border-slate-800/80 transition-all duration-300 z-30 ${collapsed ? 'w-20' : 'w-64'}`}>
-      <div className="flex items-center justify-between h-16 px-4 border-b border-slate-800/80">
+    <aside 
+      className={`relative flex flex-col bg-white border-r border-[#E4E7EC] transition-all duration-200 z-30 flex-shrink-0 ${
+        collapsed ? 'w-20' : 'w-64'
+      }`}
+    >
+      {/* Brand Header */}
+      <div className="flex items-center justify-between h-16 px-4 border-b border-[#E4E7EC]">
         <div className="flex items-center space-x-3 overflow-hidden">
-          <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-cyan-500 to-teal-400 text-white shadow-lg shadow-indigo-500/30 flex-shrink-0">
-            <ShieldAlert className="w-6 h-6 animate-pulse-subtle" />
+          {/* Shield icon with subtle brand blue gradient inside icon only */}
+          <div className="w-9 h-9 rounded-xl bg-[#101828] flex items-center justify-center flex-shrink-0 shadow-saas-xs border border-slate-800">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
+              <defs>
+                <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#60A5FA" />
+                  <stop offset="100%" stopColor="#2563EB" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+                fill="url(#shieldGrad)"
+                stroke="#93C5FD"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M9 12l2 2 4-4"
+                stroke="#FFFFFF"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </div>
           {!collapsed && (
-            <div className="flex flex-col">
-              <span className="font-black text-lg tracking-wider bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">
+            <div className="flex flex-col min-w-0">
+              <span className="font-extrabold text-base tracking-tight text-[#101828]">
                 SDSCC
               </span>
-              <span className="text-[10px] text-cyan-400 font-extrabold tracking-widest uppercase -mt-1">
-                Security Hub
+              <span className="text-[10px] text-[#667085] font-semibold tracking-wide uppercase truncate -mt-0.5">
+                Security & Compliance
               </span>
             </div>
           )}
         </div>
+        
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors border border-slate-800"
+          className="p-1.5 rounded-lg border border-[#E4E7EC] hover:bg-slate-50 text-[#667085] hover:text-[#101828] transition-colors"
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
         </button>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const active = isActive(item.path)
-          return (
-            <NavLink
-              key={item.label}
-              to={item.path}
-              className={`group flex items-center px-3.5 py-3 rounded-2xl font-bold text-xs transition-all duration-200 ${
-                active
-                  ? 'bg-gradient-to-r from-indigo-600/25 to-cyan-500/15 text-indigo-300 border border-indigo-500/40 shadow-lg shadow-indigo-500/10'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900/80'
-              }`}
-            >
-              <Icon className={`w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                active ? 'text-cyan-400' : 'text-slate-500 group-hover:text-slate-300'
-              }`} />
-              {!collapsed && (
-                <span className="ml-3 truncate tracking-wide">{item.label}</span>
-              )}
-              {active && !collapsed && (
-                <span className="ml-auto w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]"></span>
-              )}
-            </NavLink>
-          )
-        })}
+      {/* Navigation Groups */}
+      <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
+        {navGroups.map((group) => (
+          <div key={group.title} className="space-y-1">
+            {!collapsed && (
+              <div className="px-3 pb-1">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-[#98A2B3]">
+                  {group.title}
+                </span>
+              </div>
+            )}
+
+            {group.items.map((item) => {
+              const Icon = item.icon
+              const active = isActive(item.path)
+              return (
+                <NavLink
+                  key={item.label}
+                  to={item.path}
+                  title={collapsed ? item.label : undefined}
+                  className={`group relative flex items-center px-3 py-2 rounded-xl font-medium text-xs transition-all duration-150 ${
+                    active
+                      ? 'bg-blue-50/70 text-[#101828] font-semibold'
+                      : 'text-[#667085] hover:text-[#101828] hover:bg-slate-50'
+                  }`}
+                >
+                  {/* Subtle 3px left rounded accent bar */}
+                  {active && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#2563EB] rounded-r-full"></span>
+                  )}
+                  <Icon 
+                    className={`w-4 h-4 flex-shrink-0 transition-colors ${
+                      active ? 'text-[#2563EB]' : 'text-[#98A2B3] group-hover:text-[#475467]'
+                    }`} 
+                  />
+                  {!collapsed && (
+                    <span className="ml-3 truncate tracking-tight">{item.label}</span>
+                  )}
+                </NavLink>
+              )
+            })}
+          </div>
+        ))}
       </nav>
 
-      {!collapsed && (
-        <div className="p-4 m-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
-          <div className="flex items-center space-x-2 text-xs text-slate-400 mb-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            <span className="font-bold text-slate-200">Phase 8 Active</span>
+      {/* Bottom Status Panel */}
+      <div className="p-3 border-t border-[#E4E7EC]">
+        {!collapsed ? (
+          <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E4E7EC] flex flex-col space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-[#101828]">Security Platform</span>
+              <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                ACTIVE
+              </span>
+            </div>
+            <p className="text-[10px] text-[#667085] leading-relaxed">
+              Static dependency audit & multi-project isolation engine.
+            </p>
           </div>
-          <p className="text-[11px] text-slate-400 font-mono">Decision-Support Layer</p>
-        </div>
-      )}
+        ) : (
+          <div className="flex justify-center">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" title="SDSCC Engine Active"></span>
+          </div>
+        )}
+      </div>
     </aside>
   )
 }

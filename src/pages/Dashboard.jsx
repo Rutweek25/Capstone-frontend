@@ -1,439 +1,489 @@
-import React from 'react'
-import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import React, { useEffect } from 'react'
+import { Link, useParams } from 'react-router-dom'
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, Legend 
+  PieChart, Pie, Cell 
 } from 'recharts'
 import { 
-  ShieldAlert, 
-  FolderKanban, 
+  ShieldCheck, 
   Layers, 
   Bug, 
   FileCheck, 
-  AlertTriangle, 
+  Scale, 
   FileCode2, 
-  Zap, 
   UploadCloud, 
   GitFork,
   ArrowRight,
-  TrendingUp,
-  Activity,
-  CheckCircle2,
   Lightbulb,
-  FileCheck2
+  FileCheck2,
+  AlertOctagon,
+  Clock,
+  Activity,
+  CheckSquare
 } from 'lucide-react'
 import { useProjects } from '../context/ProjectContext'
+import ProjectContextBar from '../components/ProjectContextBar'
 
 const SEVERITY_COLORS = {
-  Critical: '#f43f5e',
-  High: '#f97316',
-  Medium: '#eab308',
-  Low: '#10b981'
+  Critical: '#D92D20',
+  High: '#F97316',
+  Medium: '#F59E0B',
+  Low: '#059669'
 }
 
 const LICENSE_COLORS = {
-  Approved: '#10b981',
-  Review: '#f59e0b',
-  Unknown: '#64748b'
+  Approved: '#059669',
+  Review: '#D97706',
+  Unknown: '#667085'
 }
 
 export default function Dashboard() {
-  const { projects, selectedProject, setSelectedProject, loading, isDemoMode } = useProjects()
+  const { id: routeId } = useParams()
+  const { projects, selectedProject, selectProjectById } = useProjects()
 
-  const pid = selectedProject?._id || (projects[0] ? projects[0]._id : 'demo-proj-001')
+  useEffect(() => {
+    if (routeId) {
+      selectProjectById(routeId)
+    }
+  }, [routeId])
 
-  const totalProjects = projects.length
-  const totalDeps = projects.reduce((acc, p) => acc + (p.dependencyCounts?.dependencies || p.dependencyCounts?.total || 0), 0)
-  const totalVulns = projects.reduce((acc, p) => acc + (p.vulnerabilities?.total || 0), 0)
-  const totalCriticalVulns = projects.reduce((acc, p) => acc + (p.vulnerabilities?.critical || 0), 0)
-  
-  const totalApprovedLicenses = projects.reduce((acc, p) => acc + (p.approvedLicenses || 0), 0)
-  const totalReviewLicenses = projects.reduce((acc, p) => acc + (p.reviewLicenses || 0), 0)
-  const totalUnknownLicenses = projects.reduce((acc, p) => acc + (p.unknownLicenses || 0), 0)
+  const p = selectedProject || projects[0]
 
-  const avgRisk = totalProjects > 0 
-    ? Math.round(projects.reduce((acc, p) => acc + (p.averageRiskScore || 0), 0) / totalProjects) 
-    : 0
+  if (!p) {
+    return (
+      <div className="saas-card p-12 text-center space-y-4 max-w-lg mx-auto my-12">
+        <ShieldCheck className="w-12 h-12 text-slate-300 mx-auto" />
+        <h2 className="text-xl font-bold text-[#101828]">No Projects Available</h2>
+        <p className="text-xs text-[#667085]">
+          Upload a project archive (ZIP) containing package.json to begin static dependency security analysis.
+        </p>
+        <Link
+          to="/upload"
+          className="btn-primary text-xs"
+        >
+          <UploadCloud className="w-4 h-4 mr-1.5" />
+          <span>Upload Project ZIP</span>
+        </Link>
+      </div>
+    )
+  }
 
+  const projectName = p.projectName || p.name || 'Unnamed Project'
+  const version = p.projectVersion || '1.0.0'
+  const ecosystem = p.ecosystem || 'npm'
+  const pid = p._id
+
+  const lastScanned = p.analyzedAt 
+    ? new Date(p.analyzedAt).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    : 'Pending Analysis'
+
+  // Strictly Project-Scoped Metrics
+  const totalDeps = p.dependencyCounts?.dependencies || p.dependencyCounts?.total || p.totalDependencies || 0
+  const directDeps = p.dependencyCounts?.direct || p.directDependencies || 0
+  const transitiveDeps = p.dependencyCounts?.transitive || p.transitiveDependencies || 0
+
+  const totalVulns = p.criticalRiskCount !== undefined 
+    ? ((p.criticalRiskCount || 0) + (p.highRiskCount || 0) + (p.mediumRiskCount || 0) + (p.lowRiskCount || 0))
+    : (p.vulnerabilities?.total || 0)
+  const criticalVulns = p.criticalRiskCount ?? p.vulnerabilities?.critical ?? 0
+  const highVulns = p.highRiskCount ?? p.vulnerabilities?.high ?? 0
+  const mediumVulns = p.mediumRiskCount ?? p.vulnerabilities?.medium ?? 0
+  const lowVulns = p.lowRiskCount ?? p.vulnerabilities?.low ?? 0
+
+  const approvedLicenses = p.approvedLicenses || 0
+  const reviewLicenses = p.reviewLicenses || 0
+  const unknownLicenses = p.unknownLicenses || 0
+  const totalLicenses = approvedLicenses + reviewLicenses + unknownLicenses
+
+  const riskScore = p.averageRiskScore ?? 0
+  const riskLevel = p.riskLevel || (riskScore >= 70 ? 'HIGH' : riskScore >= 40 ? 'MEDIUM' : 'LOW')
+
+  // Overall Status
+  const policyStatus = (p.policyStatus || 'PASS').toUpperCase()
+  const isPass = policyStatus === 'PASS' || policyStatus === 'PASSED'
+  const isReview = policyStatus === 'REVIEW'
+  const isFail = policyStatus === 'FAIL' || policyStatus === 'FAILED'
+
+  // Posture Score (0-100, where 100 is cleanest)
+  const postureScore = Math.max(0, 100 - riskScore)
+  const postureRating = postureScore >= 80 ? 'Good' : postureScore >= 50 ? 'Moderate' : 'Needs Attention'
+
+  // Chart Data strictly for Selected Project
   const vulnChartData = [
-    { name: 'Critical', count: projects.reduce((acc, p) => acc + (p.vulnerabilities?.critical || 0), 0) },
-    { name: 'High', count: projects.reduce((acc, p) => acc + (p.vulnerabilities?.high || 0), 0) },
-    { name: 'Medium', count: projects.reduce((acc, p) => acc + (p.vulnerabilities?.medium || 0), 0) },
-    { name: 'Low', count: projects.reduce((acc, p) => acc + (p.vulnerabilities?.low || 0), 0) },
+    { name: 'Critical', count: criticalVulns, fill: SEVERITY_COLORS.Critical },
+    { name: 'High', count: highVulns, fill: SEVERITY_COLORS.High },
+    { name: 'Medium', count: mediumVulns, fill: SEVERITY_COLORS.Medium },
+    { name: 'Low', count: lowVulns, fill: SEVERITY_COLORS.Low }
   ]
 
   const licenseChartData = [
-    { name: 'Approved', value: totalApprovedLicenses },
-    { name: 'Review', value: totalReviewLicenses },
-    { name: 'Unknown', value: totalUnknownLicenses },
-  ].filter(d => d.value > 0)
-
-  const riskChartData = [
-    { name: 'Critical (≥90)', value: projects.filter(p => (p.averageRiskScore || 0) >= 90).length, fill: '#f43f5e' },
-    { name: 'High (70-89)', value: projects.filter(p => (p.averageRiskScore || 0) >= 70 && (p.averageRiskScore || 0) < 90).length, fill: '#f97316' },
-    { name: 'Medium (40-69)', value: projects.filter(p => (p.averageRiskScore || 0) >= 40 && (p.averageRiskScore || 0) < 70).length, fill: '#eab308' },
-    { name: 'Low (<40)', value: projects.filter(p => (p.averageRiskScore || 0) < 40).length, fill: '#10b981' },
+    { name: 'Approved', value: approvedLicenses, color: LICENSE_COLORS.Approved },
+    { name: 'Review', value: reviewLicenses, color: LICENSE_COLORS.Review },
+    { name: 'Unknown', value: unknownLicenses, color: LICENSE_COLORS.Unknown }
   ].filter(d => d.value > 0)
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Hero Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-950 via-slate-900 to-cyan-950 border border-slate-800 p-6 md:p-8 shadow-2xl">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+    <div className="space-y-8 pb-16">
+      {/* 1. Project Context Bar */}
+      <ProjectContextBar activeTab="" />
+
+      {/* 2. Editorial Hero Section */}
+      <div className="hero-surface radial-glow p-6 sm:p-8">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
           <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-bold uppercase tracking-wider flex items-center space-x-1.5">
-                <Zap className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                <span>Security Hub Phase 8</span>
-              </span>
-              <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
-                Decision-Support Active
+            <div className="flex items-center space-x-2 text-[#2563EB] text-xs font-bold uppercase tracking-wider">
+              <Activity className="w-4 h-4" />
+              <span>Security Command Center</span>
+            </div>
+            <div className="flex items-center space-x-3">
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-[#101828] tracking-tight">
+                {projectName}
+              </h1>
+              <span className="px-2 py-0.5 rounded-md bg-[#F2F4F7] text-[#344054] font-mono text-xs border border-[#EAECF0]">
+                v{version}
               </span>
             </div>
-            
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white">
-              Software Dependency <span className="bg-gradient-to-r from-indigo-400 via-cyan-300 to-teal-300 bg-clip-text text-transparent">Security Dashboard</span>
-            </h1>
-            
-            <p className="text-slate-300 text-sm max-w-2xl leading-relaxed">
-              Real-time software bill of materials (SBOM) scanning, open-source SPDX license audit, vulnerability detection, remediation guidance, and compliance enforcement.
+            <p className="text-xs sm:text-sm text-[#667085] max-w-2xl leading-relaxed">
+              Consolidated security posture, multi-path dependency graph telemetry, and continuous compliance evaluation.
             </p>
+
+            <div className="flex items-center flex-wrap gap-3 pt-2 text-xs text-[#667085]">
+              <span className="flex items-center">
+                <Clock className="w-3.5 h-3.5 mr-1 text-[#98A2B3]" />
+                Scanned: <strong className="text-[#101828] ml-1 font-medium">{lastScanned}</strong>
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className="font-mono text-[#667085]">{ecosystem}</span>
+              <span className="text-slate-300">•</span>
+              <span>Overall Posture: <strong className="text-[#101828]">{postureRating}</strong></span>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 flex-shrink-0">
+          <div className="flex items-center flex-wrap gap-2.5 self-start lg:self-auto flex-shrink-0">
             <Link
               to={`/projects/${pid}/recommendations`}
-              className="px-5 py-3 rounded-2xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 font-bold text-xs shadow-lg transition-all flex items-center space-x-2"
+              className="btn-secondary text-xs"
             >
-              <Lightbulb className="w-4 h-4 text-indigo-400" />
-              <span>Recommendations</span>
+              <Lightbulb className="w-4 h-4 mr-1.5 text-amber-500" />
+              <span>Remediations</span>
             </Link>
 
             <Link
               to={`/projects/${pid}/report`}
-              className="px-5 py-3 rounded-2xl bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 border border-emerald-500/40 font-bold text-xs shadow-lg transition-all flex items-center space-x-2"
+              className="btn-secondary text-xs"
             >
-              <FileCheck2 className="w-4 h-4 text-emerald-400" />
-              <span>Final Report</span>
+              <FileCheck2 className="w-4 h-4 mr-1.5 text-emerald-600" />
+              <span>Compliance Report</span>
             </Link>
 
             <Link
-              to="/upload"
-              className="px-6 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 via-cyan-500 to-teal-400 hover:from-indigo-500 hover:to-cyan-300 text-white font-bold text-xs shadow-xl shadow-indigo-500/25 transition-all flex items-center space-x-2"
+              to={`/projects/${pid}/dependencies`}
+              className="btn-primary text-xs"
             >
-              <UploadCloud className="w-4 h-4" />
-              <span>Upload & Scan ZIP</span>
+              <span>Explore Tree</span>
+              <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
             </Link>
           </div>
         </div>
       </div>
 
-      {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="glass-card p-5 rounded-2xl border border-slate-800">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Monitored Projects</span>
-            <div className="p-3 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/30">
-              <FolderKanban className="w-5 h-5" />
-            </div>
+      {/* 3. Metric Bento Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Metric 1: Dependencies */}
+        <Link to={`/projects/${pid}/dependencies`} className="saas-card-hover p-5 block group">
+          <div className="flex items-center justify-between text-[#667085]">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#98A2B3]">Dependencies</span>
+            <Layers className="w-4 h-4 text-[#98A2B3] group-hover:text-blue-600 transition-colors" />
           </div>
-          <div className="mt-4 flex items-baseline space-x-2">
-            <span className="text-4xl font-black text-white">{totalProjects}</span>
-            <span className="text-xs text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-              Active Scans
+          <div className="text-3xl font-black text-[#101828] font-mono mt-2">
+            {totalDeps}
+          </div>
+          <div className="text-[11px] text-[#667085] mt-1 flex items-center space-x-1">
+            <span className="font-semibold text-[#101828]">{directDeps}</span> direct
+            <span className="text-slate-300">•</span>
+            <span className="font-semibold text-[#101828]">{transitiveDeps}</span> transitive
+          </div>
+        </Link>
+
+        {/* Metric 2: Vulnerabilities */}
+        <Link to={`/projects/${pid}/vulnerabilities`} className="saas-card-hover p-5 block group">
+          <div className="flex items-center justify-between text-[#667085]">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#98A2B3]">Vulnerabilities</span>
+            <Bug className="w-4 h-4 text-[#98A2B3] group-hover:text-rose-600 transition-colors" />
+          </div>
+          <div className="text-3xl font-black text-[#101828] font-mono mt-2">
+            {totalVulns}
+          </div>
+          <div className="text-[11px] text-[#667085] mt-1 flex items-center space-x-1.5">
+            {criticalVulns > 0 ? (
+              <span className="font-extrabold text-rose-600">{criticalVulns} critical</span>
+            ) : (
+              <span className="text-emerald-600 font-semibold">0 critical</span>
+            )}
+            <span className="text-slate-300">•</span>
+            <span>{highVulns} high</span>
+          </div>
+        </Link>
+
+        {/* Metric 3: Licenses */}
+        <Link to={`/projects/${pid}/licenses`} className="saas-card-hover p-5 block group">
+          <div className="flex items-center justify-between text-[#667085]">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#98A2B3]">Licenses</span>
+            <FileCheck className="w-4 h-4 text-[#98A2B3] group-hover:text-emerald-600 transition-colors" />
+          </div>
+          <div className="text-3xl font-black text-[#101828] font-mono mt-2">
+            {totalLicenses || totalDeps}
+          </div>
+          <div className="text-[11px] text-[#667085] mt-1 flex items-center space-x-1.5">
+            <span className="text-emerald-600 font-semibold">{approvedLicenses} approved</span>
+            {reviewLicenses > 0 && (
+              <>
+                <span className="text-slate-300">•</span>
+                <span className="text-amber-600 font-semibold">{reviewLicenses} review</span>
+              </>
+            )}
+          </div>
+        </Link>
+
+        {/* Metric 4: Risk Score */}
+        <Link to={`/projects/${pid}/risk`} className="saas-card-hover p-5 block group">
+          <div className="flex items-center justify-between text-[#667085]">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#98A2B3]">Risk Score</span>
+            <Scale className="w-4 h-4 text-[#98A2B3] group-hover:text-amber-500 transition-colors" />
+          </div>
+          <div className="flex items-baseline space-x-2 mt-2">
+            <span className="text-3xl font-black text-[#101828] font-mono">{riskScore}</span>
+            <span className="text-xs text-[#98A2B3]">/ 100</span>
+          </div>
+          <div className="mt-1">
+            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold ${
+              riskLevel === 'CRITICAL' || riskLevel === 'HIGH'
+                ? 'saas-badge-fail'
+                : riskLevel === 'MEDIUM'
+                ? 'saas-badge-review'
+                : 'saas-badge-pass'
+            }`}>
+              {riskLevel} RATING
             </span>
           </div>
-          <p className="mt-2 text-xs text-slate-400">{isDemoMode ? 'Interactive Demo Mode' : 'Connected Repositories'}</p>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05 }} className="glass-card p-5 rounded-2xl border border-slate-800">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Dependencies</span>
-            <div className="p-3 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/30">
-              <Layers className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline space-x-2">
-            <span className="text-4xl font-black text-white">{totalDeps}</span>
-            <span className="text-xs text-cyan-400 font-bold">Packages</span>
-          </div>
-          <p className="mt-2 text-xs text-slate-400">Direct & transitive trees</p>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }} className="glass-card p-5 rounded-2xl border border-slate-800">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Vulnerabilities</span>
-            <div className="p-3 rounded-xl bg-gradient-to-tr from-rose-500 to-pink-600 text-white shadow-lg shadow-rose-500/30">
-              <Bug className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline space-x-2">
-            <span className="text-4xl font-black text-white">{totalVulns}</span>
-            {totalCriticalVulns > 0 && (
-              <span className="text-xs text-rose-400 font-bold px-2.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 badge-glow-rose">
-                {totalCriticalVulns} Critical
-              </span>
-            )}
-          </div>
-          <p className="mt-2 text-xs text-slate-400">CVE & OSV database advisories</p>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15 }} className="glass-card p-5 rounded-2xl border border-slate-800">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Average Risk Score</span>
-            <div className="p-3 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/30">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-baseline space-x-2">
-            <span className="text-4xl font-black text-white">{avgRisk}</span>
-            <span className="text-xs text-slate-400 font-medium">/ 100</span>
-          </div>
-          <p className="mt-2 text-xs text-slate-400">Weighted CVSS & license rating</p>
-        </motion.div>
+        </Link>
       </div>
 
-      {/* Analytics Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="glass-panel p-6 border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2">
-              <div className="p-2 rounded-lg bg-rose-500/10 text-rose-400">
-                <Bug className="w-4 h-4" />
-              </div>
-              <h3 className="text-base font-bold text-white">Vulnerability Breakdown</h3>
-            </div>
-            <span className="text-xs text-slate-400 font-semibold">CVE Advisories</span>
-          </div>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={vulnChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#fff' }}
-                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                />
-                <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                  {vulnChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={SEVERITY_COLORS[entry.name] || '#6366f1'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="glass-panel p-6 border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2">
-              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-                <FileCheck className="w-4 h-4" />
-              </div>
-              <h3 className="text-base font-bold text-white">License Compliance</h3>
-            </div>
-            <span className="text-xs text-slate-400 font-semibold">SPDX Normalization</span>
-          </div>
-          <div className="h-64 w-full flex items-center justify-center">
-            {licenseChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={licenseChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {licenseChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={LICENSE_COLORS[entry.name] || '#94a3b8'} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#fff' }} />
-                  <Legend verticalAlign="bottom" height={36} wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-xs text-slate-500">No license data</p>
-            )}
-          </div>
-        </div>
-
-        <div className="glass-panel p-6 border border-slate-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2">
-              <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <h3 className="text-base font-bold text-white">Risk Rating Breakdown</h3>
-            </div>
-            <span className="text-xs text-slate-400 font-semibold">Risk Rating</span>
-          </div>
-          <div className="h-64 w-full flex items-center justify-center">
-            {riskChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={riskChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {riskChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '0.75rem', color: '#fff' }} />
-                  <Legend verticalAlign="bottom" height={36} wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-xs text-slate-500">No risk rating data</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Projects Inventory */}
-      <div>
-        <div className="flex items-center justify-between mb-5">
+      {/* 4. Asymmetric Posture + Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Posture Gauge Card (4 Cols) */}
+        <div className="lg:col-span-4 saas-card p-6 flex flex-col justify-between">
           <div>
-            <h2 className="text-2xl font-extrabold text-white tracking-tight">Analyzed Project Portfolio</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Select a project portfolio to inspect security, licenses, recommendations, and report</p>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#98A2B3]">
+              SECURITY POSTURE INDEX
+            </span>
+            <h3 className="text-base font-extrabold text-[#101828] mt-1">
+              Overall Health Rating
+            </h3>
+
+            <div className="my-6 flex flex-col items-center justify-center">
+              <div className="relative w-36 h-36 flex items-center justify-center">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    stroke="#F2F4F7"
+                    strokeWidth="8"
+                    fill="none"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="45"
+                    stroke={postureScore >= 80 ? '#059669' : postureScore >= 50 ? '#D97706' : '#D92D20'}
+                    strokeWidth="8"
+                    strokeDasharray="283"
+                    strokeDashoffset={283 - (283 * postureScore) / 100}
+                    strokeLinecap="round"
+                    fill="none"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <span className="text-3xl font-black text-[#101828] font-mono">
+                    {postureScore}
+                  </span>
+                  <span className="text-[10px] uppercase font-bold text-[#98A2B3]">
+                    / 100
+                  </span>
+                </div>
+              </div>
+              <span className={`inline-block mt-3 px-3 py-1 rounded-full text-xs font-bold ${
+                postureScore >= 80 ? 'saas-badge-pass' : postureScore >= 50 ? 'saas-badge-review' : 'saas-badge-fail'
+              }`}>
+                {postureRating}
+              </span>
+            </div>
           </div>
-          <Link to="/upload" className="text-xs text-indigo-400 hover:text-indigo-300 font-bold flex items-center space-x-1">
-            <span>+ Upload project</span>
+
+          <div className="pt-3 border-t border-[#E4E7EC] text-xs text-[#667085] leading-relaxed">
+            Derived as inverse composite risk (100 - Risk Score).
+          </div>
+        </div>
+
+        {/* Vulnerability Severity Chart (4 Cols) */}
+        <div className="lg:col-span-4 saas-card p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#98A2B3]">
+                ADVISORY SPECTRUM
+              </span>
+              <Link to={`/projects/${pid}/vulnerabilities`} className="text-xs text-blue-600 hover:underline font-semibold">
+                View All
+              </Link>
+            </div>
+            <h3 className="text-base font-extrabold text-[#101828] mt-1">
+              Vulnerabilities by Severity
+            </h3>
+
+            <div className="h-44 mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={vulnChartData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                  <XAxis type="number" hide />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#667085' }} axisLine={false} tickLine={false} width={65} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E4E7EC', borderRadius: '0.75rem', fontSize: '11px', boxShadow: '0 4px 12px rgba(16,24,40,0.06)' }}
+                  />
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-[#E4E7EC] flex items-center justify-between text-xs text-[#667085]">
+            <span>Critical Advisories:</span>
+            <strong className="font-mono text-rose-600">{criticalVulns}</strong>
+          </div>
+        </div>
+
+        {/* License Compliance Donut (4 Cols) */}
+        <div className="lg:col-span-4 saas-card p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#98A2B3]">
+                LEGAL FRICTION
+              </span>
+              <Link to={`/projects/${pid}/licenses`} className="text-xs text-blue-600 hover:underline font-semibold">
+                Audit
+              </Link>
+            </div>
+            <h3 className="text-base font-extrabold text-[#101828] mt-1">
+              License Distribution
+            </h3>
+
+            <div className="h-44 mt-4 flex items-center justify-center">
+              {licenseChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={licenseChartData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={45}
+                      outerRadius={65}
+                      paddingAngle={4}
+                    >
+                      {licenseChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E4E7EC', borderRadius: '0.75rem', fontSize: '11px' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <span className="text-xs text-[#98A2B3]">No license data</span>
+              )}
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-[#E4E7EC] flex items-center justify-between text-xs text-[#667085]">
+            <span>Approved Permissive:</span>
+            <strong className="font-mono text-emerald-600">{approvedLicenses}</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* 5. Module Quick Jump Grid */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-extrabold text-[#101828] tracking-tight">
+            Security Intelligence Modules
+          </h3>
+          <span className="text-xs text-[#667085]">All modules scoped to {projectName}</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Link to={`/projects/${pid}/graph`} className="saas-card-hover p-4 block group">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                <GitFork className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold text-[#101828] group-hover:text-blue-600 transition-colors">
+                  Dependency Graph
+                </h4>
+                <p className="text-[10px] text-[#667085] truncate">Visual interactive graph canvas</p>
+              </div>
+            </div>
+          </Link>
+
+          <Link to={`/projects/${pid}/sbom`} className="saas-card-hover p-4 block group">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+                <FileCode2 className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold text-[#101828] group-hover:text-purple-600 transition-colors">
+                  CycloneDX SBOM
+                </h4>
+                <p className="text-[10px] text-[#667085] truncate">v1.4 verified manifest</p>
+              </div>
+            </div>
+          </Link>
+
+          <Link to={`/projects/${pid}/policies`} className="saas-card-hover p-4 block group">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                <CheckSquare className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold text-[#101828] group-hover:text-emerald-600 transition-colors">
+                  Policy Rules
+                </h4>
+                <p className="text-[10px] text-[#667085] truncate">Governance compliance gating</p>
+              </div>
+            </div>
+          </Link>
+
+          <Link to={`/projects/${pid}/report`} className="saas-card-hover p-4 block group">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                <FileCheck2 className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-xs font-bold text-[#101828] group-hover:text-amber-600 transition-colors">
+                  Audit Report
+                </h4>
+                <p className="text-[10px] text-[#667085] truncate">Formal verification document</p>
+              </div>
+            </div>
           </Link>
         </div>
-
-        {loading ? (
-          <div className="glass-panel p-12 text-center text-slate-400">Loading workspace projects...</div>
-        ) : projects.length === 0 ? (
-          <div className="glass-panel p-12 text-center text-slate-400 space-y-3">
-            <FolderKanban className="w-12 h-12 text-indigo-400 mx-auto" />
-            <p className="text-lg font-bold text-white">No projects analyzed yet</p>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">Upload a project ZIP file to scan dependencies and generate SBOM</p>
-            <Link to="/upload" className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-indigo-500/20">
-              Upload Project ZIP
-            </Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((p) => {
-              const isSelected = selectedProject?._id === p._id
-              return (
-                <div
-                  key={p._id}
-                  className={`glass-panel p-6 border transition-all duration-300 flex flex-col justify-between ${
-                    isSelected ? 'border-indigo-500/80 shadow-2xl shadow-indigo-500/15 bg-indigo-950/30' : 'border-slate-800 hover:border-slate-700'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-800 text-indigo-300 uppercase tracking-wider border border-slate-700">
-                          {p.ecosystem || 'npm'}
-                        </span>
-                        <h3 className="text-xl font-bold text-white mt-1.5">
-                          {p.projectName || p.name}
-                        </h3>
-                      </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-black ${
-                        (p.averageRiskScore || 0) >= 90
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30 badge-glow-rose'
-                          : (p.averageRiskScore || 0) >= 70
-                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 badge-glow-amber'
-                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 badge-glow-emerald'
-                      }`}>
-                        Score {p.averageRiskScore ?? 0}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-slate-400 mt-1 font-mono">
-                      v{p.projectVersion || '1.0.0'} • Analyzed {p.analyzedAt ? new Date(p.analyzedAt).toLocaleDateString() : 'Recently'}
-                    </p>
-
-                    <div className="grid grid-cols-3 gap-2 my-4 pt-3 border-t border-slate-800 text-center">
-                      <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
-                        <div className="text-[10px] text-slate-400 uppercase font-bold">Dependencies</div>
-                        <div className="text-base font-black text-cyan-400 mt-0.5">
-                          {p.dependencyCounts?.dependencies ?? p.dependencyCounts?.total ?? 0}
-                        </div>
-                      </div>
-
-                      <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
-                        <div className="text-[10px] text-slate-400 uppercase font-bold">Approved Lic</div>
-                        <div className="text-base font-black text-emerald-400 mt-0.5">
-                          {p.approvedLicenses ?? 0}
-                        </div>
-                      </div>
-
-                      <div className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
-                        <div className="text-[10px] text-slate-400 uppercase font-bold">SBOM Status</div>
-                        <div className={`text-xs font-bold mt-1 ${p.sbomStatus === 'STALE' ? 'text-amber-400' : 'text-emerald-400'}`}>
-                          {p.sbomStatus || 'VALID'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                    <button
-                      onClick={() => setSelectedProject(p)}
-                      className={`text-xs font-bold px-3.5 py-1.5 rounded-xl border transition-all ${
-                        isSelected 
-                          ? 'bg-gradient-to-r from-indigo-600 to-cyan-500 text-white border-indigo-400 shadow-md shadow-indigo-500/20' 
-                          : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-700'
-                      }`}
-                    >
-                      {isSelected ? 'Active Project' : 'Select Project'}
-                    </button>
-
-                    <div className="flex items-center space-x-1">
-                      <Link
-                        to={`/projects/${p._id}/recommendations`}
-                        className="p-2 rounded-xl bg-slate-800/80 hover:bg-indigo-600/30 text-slate-400 hover:text-indigo-300 transition-colors border border-slate-700/50"
-                        title="Remediation Recommendations"
-                      >
-                        <Lightbulb className="w-4 h-4" />
-                      </Link>
-                      <Link
-                        to={`/projects/${p._id}/report`}
-                        className="p-2 rounded-xl bg-slate-800/80 hover:bg-emerald-600/30 text-slate-400 hover:text-emerald-300 transition-colors border border-slate-700/50"
-                        title="Compliance Report"
-                      >
-                        <FileCheck2 className="w-4 h-4" />
-                      </Link>
-                      <Link
-                        to={`/projects/${p._id}/vulnerabilities`}
-                        className="p-2 rounded-xl bg-slate-800/80 hover:bg-rose-600/30 text-slate-400 hover:text-rose-300 transition-colors border border-slate-700/50"
-                        title="View Vulnerabilities"
-                      >
-                        <Bug className="w-4 h-4" />
-                      </Link>
-                      <Link
-                        to={`/projects/${p._id}/sbom`}
-                        className="p-2 rounded-xl bg-slate-800/80 hover:bg-teal-600/30 text-slate-400 hover:text-teal-300 transition-colors border border-slate-700/50"
-                        title="View SBOM"
-                      >
-                        <FileCode2 className="w-4 h-4" />
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
       </div>
     </div>
   )

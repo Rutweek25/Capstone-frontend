@@ -1,259 +1,393 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { 
   GitFork, 
   Search, 
   ZoomIn, 
   ZoomOut, 
   RotateCcw, 
-  Box, 
-  ShieldAlert, 
-  X 
+  X,
+  Layers,
+  Info,
+  Loader2
 } from 'lucide-react'
 import api from '../services/api'
 import { useProjects } from '../context/ProjectContext'
+import ProjectContextBar from '../components/ProjectContextBar'
 
-const MOCK_GRAPH = {
-  nodes: [
-    { id: 'root', label: 'payment-gateway-service v2.4.1', type: 'root', x: 400, y: 80 },
-    { id: 'express', label: 'express @ 4.18.2', type: 'direct', x: 220, y: 220 },
-    { id: 'jsonwebtoken', label: 'jsonwebtoken @ 9.0.2', type: 'direct', x: 400, y: 220 },
-    { id: 'axios', label: 'axios @ 1.6.2', type: 'direct', x: 580, y: 220 },
-    { id: 'body-parser', label: 'body-parser @ 1.20.2', type: 'transitive', x: 140, y: 360 },
-    { id: 'qs', label: 'qs @ 6.11.0', type: 'transitive', x: 300, y: 360 },
-    { id: 'semver', label: 'semver @ 7.5.4', type: 'transitive', x: 440, y: 360 },
-    { id: 'lodash', label: 'lodash @ 4.17.21', type: 'transitive', x: 620, y: 360 },
-  ],
-  edges: [
-    { source: 'root', target: 'express' },
-    { source: 'root', target: 'jsonwebtoken' },
-    { source: 'root', target: 'axios' },
-    { source: 'express', target: 'body-parser' },
-    { source: 'express', target: 'qs' },
-    { source: 'jsonwebtoken', target: 'semver' },
-    { source: 'axios', target: 'lodash' },
-  ]
+const NODE_COLORS = {
+  root: { bg: '#101828', border: '#1D2939', text: '#FFFFFF' },
+  direct: { bg: '#EFF4FF', border: '#D1E0FF', text: '#1E40AF' },
+  transitive: { bg: '#F8FAFC', border: '#E4E7EC', text: '#344054' }
 }
 
 export default function DependencyGraphPage() {
   const { id: routeId } = useParams()
-  const { selectedProject, projects } = useProjects()
-  const activeProjectId = routeId || selectedProject?._id || (projects[0]?._id)
+  const { selectedProject, projects, selectProjectById } = useProjects()
+  const activeProject = selectedProject || (projects.length > 0 ? projects[0] : null)
+  const activeProjectId = routeId || activeProject?._id
 
-  const [nodes, setNodes] = useState(MOCK_GRAPH.nodes)
-  const [edges, setEdges] = useState(MOCK_GRAPH.edges)
+  const [nodes, setNodes] = useState([])
+  const [edges, setEdges] = useState([])
+  const [loading, setLoading] = useState(false)
   const [selectedNode, setSelectedNode] = useState(null)
   const [search, setSearch] = useState('')
   const [zoom, setZoom] = useState(1)
 
   useEffect(() => {
-    if (activeProjectId) loadGraph(activeProjectId)
+    if (routeId) {
+      selectProjectById(routeId)
+    }
+  }, [routeId])
+
+  useEffect(() => {
+    if (activeProjectId) {
+      setNodes([])
+      setEdges([])
+      setSelectedNode(null)
+      loadGraph(activeProjectId)
+    } else {
+      setNodes([])
+      setEdges([])
+    }
   }, [activeProjectId])
 
   const loadGraph = async (pid) => {
+    setLoading(true)
     try {
-      const res = await api.get(`/projects/${pid}/graph`)
-      if (res.data && res.data.nodes && res.data.nodes.length > 0) {
+      // 1. Try dedicated graph endpoint
+      const res = await api.get(`/projects/${pid}/graph`).catch(() => null)
+      if (res?.data?.nodes && Array.isArray(res.data.nodes) && res.data.nodes.length > 0) {
+        const rootLabel = activeProject ? `${activeProject.projectName || activeProject.name} v${activeProject.projectVersion || '1.0.0'}` : 'Application'
         const mappedNodes = res.data.nodes.map((n, idx) => ({
           id: n.id,
-          label: n.data?.label || n.id,
-          type: idx === 0 ? 'root' : idx < 4 ? 'direct' : 'transitive',
+          label: n.id === 'root' ? rootLabel : (n.data?.label || n.id),
+          type: idx === 0 ? 'root' : (n.data?.type || (idx < 4 ? 'direct' : 'transitive')),
           x: 200 + (idx % 4) * 180,
-          y: 100 + Math.floor(idx / 4) * 140
+          y: 80 + Math.floor(idx / 4) * 120
         }))
         setNodes(mappedNodes)
         setEdges(res.data.edges || [])
+        return
       }
+
+      // 2. Otherwise generate graph from project's actual dependencies
+      const depRes = await api.get(`/projects/${pid}/dependencies`)
+      const deps = depRes.data?.dependencies || []
+      
+      const rootId = 'root'
+      const rootLabel = activeProject ? `${activeProject.projectName || activeProject.name} v${activeProject.projectVersion || '1.0.0'}` : 'Project Root'
+      
+      const generatedNodes = [
+        { id: rootId, label: rootLabel, type: 'root', x: 450, y: 60 }
+      ]
+      const generatedEdges = []
+
+      const directs = deps.filter(d => (d.type || '').toLowerCase() === 'direct')
+      const transitives = deps.filter(d => (d.type || '').toLowerCase() === 'transitive')
+
+      directs.forEach((d, idx) => {
+        const x = 160 + (idx * 160)
+        generatedNodes.push({
+          id: d.name,
+          label: `${d.name} @ ${d.resolvedVersion || d.requestedVersion || '1.0.0'}`,
+          type: 'direct',
+          license: d.license,
+          purl: d.purl,
+          paths: d.paths,
+          x,
+          y: 200
+        })
+        generatedEdges.push({ source: rootId, target: d.name })
+      })
+
+      transitives.forEach((t, idx) => {
+        const x = 140 + (idx * 150)
+        generatedNodes.push({
+          id: t.name,
+          label: `${t.name} @ ${t.resolvedVersion || t.requestedVersion || '1.0.0'}`,
+          type: 'transitive',
+          license: t.license,
+          purl: t.purl,
+          paths: t.paths,
+          x,
+          y: 340
+        })
+
+        // Edge from direct parent if found in path
+        const parentName = t.paths?.[0]?.[1] || (directs[idx % (directs.length || 1)]?.name)
+        if (parentName) {
+          generatedEdges.push({ source: parentName, target: t.name })
+        } else {
+          generatedEdges.push({ source: rootId, target: t.name })
+        }
+      })
+
+      setNodes(generatedNodes)
+      setEdges(generatedEdges)
     } catch (e) {
-      setNodes(MOCK_GRAPH.nodes)
-      setEdges(MOCK_GRAPH.edges)
+      console.warn('Graph generation error:', e.message)
+      setNodes([])
+      setEdges([])
+    } finally {
+      setLoading(false)
     }
   }
 
-  const filteredNodes = nodes.filter(n => 
-    search.trim() === '' || n.label.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredNodes = nodes.filter((n) => {
+    if (!search) return true
+    return n.label.toLowerCase().includes(search.toLowerCase()) || n.id.toLowerCase().includes(search.toLowerCase())
+  })
+
+  const projectName = activeProject ? (activeProject.projectName || activeProject.name) : 'Selected Project'
 
   return (
-    <div className="space-y-6 pb-10">
-      {/* Header Title */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-2 text-cyan-400 text-xs font-semibold uppercase tracking-wider mb-1">
-            <GitFork className="w-4 h-4" />
-            <span>Dependency Tree Visualizer</span>
-          </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">Dependency Graph</h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Interactive canvas graph showing direct and transitive dependency relationships.
-          </p>
-        </div>
+    <div className="space-y-8 pb-16">
+      {/* 1. Project Context Bar */}
+      <ProjectContextBar activeTab="graph" />
 
-        {/* Toolbar */}
-        <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 p-1.5 rounded-xl">
+      {/* 2. Editorial Hero Section */}
+      <div className="hero-surface radial-glow p-6 sm:p-8">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2 text-[#2563EB] text-xs font-bold uppercase tracking-wider">
+              <GitFork className="w-4 h-4" />
+              <span>Directed Graph Topology</span>
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-[#101828] tracking-tight">
+              Dependency Graph
+            </h1>
+            <p className="text-xs sm:text-sm text-[#667085] max-w-2xl leading-relaxed">
+              Interactive topological representation of direct and transitive package resolution paths for <strong className="text-[#101828]">{projectName}</strong>.
+            </p>
+
+            <div className="flex items-center flex-wrap gap-3 pt-2 text-xs text-[#667085]">
+              <span>Graph Nodes: <strong className="text-[#101828] font-mono">{nodes.length}</strong></span>
+              <span className="text-slate-300">•</span>
+              <span>Directed Edges: <strong className="text-[#101828] font-mono">{edges.length}</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Interactive White Dot-Grid Canvas with Floating Dock */}
+      <div className="saas-card relative overflow-hidden bg-white border border-[#E4E7EC] min-h-[550px]">
+        {/* Floating Controls Dock */}
+        <div className="absolute top-4 left-4 z-20 flex items-center space-x-2 bg-white/90 backdrop-blur-sm border border-[#E4E7EC] rounded-xl p-1.5 shadow-saas-sm">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-[#98A2B3] absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Find node..."
+              className="pl-8 pr-3 py-1 bg-[#F8FAFC] border border-[#E4E7EC] rounded-lg text-xs text-[#101828] placeholder-[#98A2B3] focus:outline-none w-36 sm:w-48"
+            />
+          </div>
+
+          <div className="h-4 w-px bg-[#E4E7EC]"></div>
+
           <button
-            onClick={() => setZoom(Math.min(zoom + 0.15, 1.6))}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            onClick={() => setZoom(z => Math.min(1.6, z + 0.1))}
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-[#667085] hover:text-[#101828] transition-colors"
             title="Zoom In"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
-            onClick={() => setZoom(Math.max(zoom - 0.15, 0.6))}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            onClick={() => setZoom(z => Math.max(0.6, z - 0.1))}
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-[#667085] hover:text-[#101828] transition-colors"
             title="Zoom Out"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
           <button
             onClick={() => setZoom(1)}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-[#667085] hover:text-[#101828] transition-colors"
             title="Reset Zoom"
           >
             <RotateCcw className="w-4 h-4" />
           </button>
         </div>
-      </div>
 
-      {/* Main Canvas Area */}
-      <div className="relative glass-panel border border-slate-800 overflow-hidden h-[600px] rounded-2xl">
-        {/* Search Overlay */}
-        <div className="absolute top-4 left-4 z-10 w-64">
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search graph node..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-slate-900/90 text-slate-200 border border-slate-700/80 rounded-xl pl-9 pr-4 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-cyan-500/30 backdrop-blur-md"
-            />
+        {/* Legend */}
+        <div className="absolute top-4 right-4 z-20 flex items-center space-x-3 bg-white/90 backdrop-blur-sm border border-[#E4E7EC] rounded-xl px-3 py-2 text-xs shadow-saas-sm">
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#101828]"></span>
+            <span className="text-[#667085]">Root</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+            <span className="text-[#667085]">Direct</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+            <span className="text-[#667085]">Transitive</span>
           </div>
         </div>
 
-        {/* Legend Overlay */}
-        <div className="absolute top-4 right-4 z-10 flex items-center space-x-3 bg-slate-900/90 border border-slate-800 px-3 py-2 rounded-xl backdrop-blur-md text-[11px]">
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-[0_0_8px_#6366f1]"></span>
-            <span className="text-slate-300">Direct</span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-500"></span>
-            <span className="text-slate-300">Transitive</span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            <span className="text-slate-300">Root App</span>
-          </div>
-        </div>
-
-        {/* Canvas SVG */}
-        <div className="w-full h-full flex items-center justify-center overflow-auto p-8">
-          <div className="transition-transform duration-200 origin-center" style={{ transform: `scale(${zoom})` }}>
-            <svg width="850" height="500" className="overflow-visible">
-              <defs>
-                <linearGradient id="edge-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#6366f1" stopOpacity="0.6" />
-                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.4" />
-                </linearGradient>
-              </defs>
-
-              {/* Render Connections */}
-              {edges.map((e, idx) => {
-                const sourceNode = nodes.find(n => n.id === e.source)
-                const targetNode = nodes.find(n => n.id === e.target)
-                if (!sourceNode || !targetNode) return null
-
-                return (
-                  <line
-                    key={idx}
-                    x1={sourceNode.x}
-                    y1={sourceNode.y}
-                    x2={targetNode.x}
-                    y2={targetNode.y}
-                    stroke="url(#edge-gradient)"
-                    strokeWidth="2"
-                    strokeDasharray="4 2"
-                  />
-                )
-              })}
-
-              {/* Render Nodes */}
-              {filteredNodes.map((node) => {
-                const isSelected = selectedNode?.id === node.id
-                const isRoot = node.type === 'root'
-                const isDirect = node.type === 'direct'
-
-                return (
-                  <g
-                    key={node.id}
-                    transform={`translate(${node.x}, ${node.y})`}
-                    onClick={() => setSelectedNode(node)}
-                    className="cursor-pointer group"
+        {/* Canvas Area with Dot-Grid Background */}
+        <div className="dot-grid-canvas w-full h-[550px] overflow-auto relative p-8">
+          {loading ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/60">
+              <Loader2 className="w-6 h-6 animate-spin text-[#2563EB]" />
+            </div>
+          ) : (
+            <div 
+              className="relative min-w-[950px] min-h-[500px]"
+              style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', transition: 'transform 0.15s ease' }}
+            >
+              {/* SVG Edges */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                <defs>
+                  <marker
+                    id="arrowhead"
+                    markerWidth="8"
+                    markerHeight="6"
+                    refX="7"
+                    refY="3"
+                    orient="auto"
                   >
-                    <circle
-                      r={isRoot ? 24 : 18}
-                      fill={isRoot ? '#10b981' : isDirect ? '#6366f1' : '#06b6d4'}
-                      opacity={isSelected ? 1 : 0.85}
-                      className="transition-all duration-200 group-hover:scale-125"
-                      style={{
-                        filter: isSelected
-                          ? 'drop-shadow(0 0 12px rgba(99,102,241,0.8))'
-                          : 'drop-shadow(0 4px 10px rgba(0,0,0,0.4))'
-                      }}
+                    <polygon points="0 0, 8 3, 0 6" fill="#CBD5E1" />
+                  </marker>
+                </defs>
+                {edges.map((e, idx) => {
+                  const sNode = nodes.find(n => n.id === e.source)
+                  const tNode = nodes.find(n => n.id === e.target)
+                  if (!sNode || !tNode) return null
+
+                  const x1 = sNode.x + 70
+                  const y1 = sNode.y + 20
+                  const x2 = tNode.x + 70
+                  const y2 = tNode.y + 20
+
+                  return (
+                    <line
+                      key={idx}
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke="#CBD5E1"
+                      strokeWidth="1.5"
+                      strokeDasharray={tNode.type === 'transitive' ? '4 3' : 'none'}
+                      markerEnd="url(#arrowhead)"
                     />
-                    <text
-                      y={isRoot ? 40 : 34}
-                      textAnchor="middle"
-                      fill="#f8fafc"
-                      fontSize="11"
-                      fontWeight="600"
-                      className="font-mono pointer-events-none drop-shadow"
-                    >
-                      {node.label}
-                    </text>
-                  </g>
+                  )
+                })}
+              </svg>
+
+              {/* Node Chips */}
+              {filteredNodes.map((n) => {
+                const colors = NODE_COLORS[n.type] || NODE_COLORS.transitive
+                const isSelected = selectedNode?.id === n.id
+
+                return (
+                  <div
+                    key={n.id}
+                    onClick={() => setSelectedNode(n)}
+                    style={{
+                      position: 'absolute',
+                      left: n.x,
+                      top: n.y,
+                      backgroundColor: colors.bg,
+                      borderColor: isSelected ? '#2563EB' : colors.border,
+                      color: colors.text
+                    }}
+                    className={`px-3.5 py-2 rounded-xl border font-mono text-xs font-semibold cursor-pointer shadow-saas-xs hover:shadow-saas-md transition-all flex items-center space-x-2 ${
+                      isSelected ? 'ring-2 ring-blue-500/30' : ''
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: colors.text }}></span>
+                    <span className="truncate max-w-[150px]">{n.label}</span>
+                  </div>
                 )
               })}
-            </svg>
-          </div>
+            </div>
+          )}
         </div>
-
-        {/* Selected Node Inspect Drawer */}
-        {selectedNode && (
-          <motion.div
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="absolute right-4 bottom-4 z-20 w-80 glass-panel p-5 border border-slate-700 shadow-2xl rounded-2xl"
-          >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
-              <div className="flex items-center space-x-2">
-                <Box className="w-4 h-4 text-indigo-400" />
-                <h4 className="font-bold text-white text-sm">{selectedNode.label}</h4>
-              </div>
-              <button onClick={() => setSelectedNode(null)} className="text-slate-400 hover:text-white">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-400">NodeType:</span>
-                <span className="text-indigo-400 font-semibold uppercase">{selectedNode.type}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">License:</span>
-                <span className="text-emerald-400 font-mono">MIT</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Vulnerabilities:</span>
-                <span className="text-slate-300">0 open</span>
-              </div>
-            </div>
-          </motion.div>
-        )}
       </div>
+
+      {/* 4. Selected Node Inspector Drawer */}
+      <AnimatePresence>
+        {selectedNode && (
+          <div className="fixed inset-0 z-50 overflow-hidden">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedNode(null)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+            />
+
+            <div className="fixed inset-y-0 right-0 pl-10 max-w-full flex">
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="w-screen max-w-md bg-white shadow-saas-xl border-l border-[#E4E7EC] flex flex-col justify-between"
+              >
+                <div className="p-6 border-b border-[#E4E7EC] flex items-start justify-between">
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#2563EB]">
+                      TOPOLOGY NODE
+                    </span>
+                    <h3 className="text-lg font-black text-[#101828] font-mono mt-1">
+                      {selectedNode.id}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setSelectedNode(null)}
+                    className="p-1 rounded-lg border border-[#E4E7EC] text-[#98A2B3] hover:text-[#101828]"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+                  <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#EAECF0] space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-[#98A2B3]">Scope Classification</span>
+                    <span className="font-extrabold text-[#101828] block uppercase">
+                      {selectedNode.type}
+                    </span>
+                  </div>
+
+                  {selectedNode.license && (
+                    <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#EAECF0] space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-[#98A2B3]">Declared License</span>
+                      <span className="font-mono text-emerald-700 font-bold block">
+                        {selectedNode.license}
+                      </span>
+                    </div>
+                  )}
+
+                  {selectedNode.paths && selectedNode.paths.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-[#98A2B3] mb-1.5">Chain Paths</h4>
+                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 font-mono text-[11px] text-[#344054] space-y-1">
+                        {selectedNode.paths.map((p, idx) => (
+                          <div key={idx}>↳ {p.join(' → ')}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 border-t border-[#E4E7EC] bg-slate-50 flex justify-end">
+                  <button
+                    onClick={() => setSelectedNode(null)}
+                    className="btn-primary text-xs"
+                  >
+                    Close
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
