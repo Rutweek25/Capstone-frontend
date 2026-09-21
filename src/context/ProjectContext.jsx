@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import api from '../services/api'
+import { useAuth } from './AuthContext'
 
 const ProjectContext = createContext()
 
@@ -47,6 +48,7 @@ const DEMO_PROJECTS = [
 const STORAGE_KEY = 'sdscc_active_project_id'
 
 export function ProjectProvider({ children }) {
+  const { user, isAuthenticated } = useAuth()
   const [projects, setProjects] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -60,6 +62,13 @@ export function ProjectProvider({ children }) {
   })
 
   const fetchLiveProjects = async (targetId = null) => {
+    if (!isAuthenticated) {
+      setProjects([])
+      setSelectedProject(null)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     setApiError(null)
     try {
@@ -74,7 +83,7 @@ export function ProjectProvider({ children }) {
 
       const fetched = (res.status === 'fulfilled' && res.value?.data?.projects) || []
       setProjects(fetched)
-      setIsDemoMode(false)
+      setIsDemoMode(Boolean(user?.isDemoAccount))
 
       const storedId = targetId || localStorage.getItem(STORAGE_KEY)
       const projectMatch = targetId && typeof targetId === 'object' ? targetId : null
@@ -96,45 +105,32 @@ export function ProjectProvider({ children }) {
         setSelectedProject(projectMatch)
         localStorage.setItem(STORAGE_KEY, projectMatch._id)
       } else {
+        // Authenticated user with 0 projects starts with a pristine workspace
         setProjects([])
         setSelectedProject(null)
         localStorage.removeItem(STORAGE_KEY)
       }
     } catch (err) {
       console.warn('Backend API connection failed:', err.message)
-      const activeProject = selectedProject && !DEMO_PROJECTS.some(p => p._id === selectedProject._id)
-        ? selectedProject
-        : (targetId && typeof targetId === 'object' ? targetId : null)
-
-      if (activeProject) {
-        setProjects(prev => {
-          const exists = prev.some(p => p._id === activeProject._id)
-          if (exists) {
-            return prev.map(p => p._id === activeProject._id ? activeProject : p)
-          }
-          return [activeProject, ...prev]
-        })
-        setSelectedProject(activeProject)
-        setIsDemoMode(false)
-        localStorage.setItem(STORAGE_KEY, activeProject._id)
-        setApiError('Live API unavailable. Showing the current uploaded project in offline mode.')
-      } else {
-        setApiError('Unable to connect to Live API (http://localhost:5000/api). Running Demo Mode.')
+      // DO NOT inject demo data into real authenticated accounts
+      if (user?.isDemoAccount) {
         setProjects(DEMO_PROJECTS)
+        setSelectedProject(DEMO_PROJECTS[0])
         setIsDemoMode(true)
-        const storedId = targetId || localStorage.getItem(STORAGE_KEY)
-        const active = DEMO_PROJECTS.find(p => p._id === storedId) || DEMO_PROJECTS[0]
-        setSelectedProject(active)
-        localStorage.setItem(STORAGE_KEY, active._id)
+      } else {
+        setProjects([])
+        setSelectedProject(null)
+        setApiError('Unable to load projects from server.')
       }
     } finally {
       setLoading(false)
     }
   }
 
+  // Reload projects whenever authentication state changes
   useEffect(() => {
     fetchLiveProjects()
-  }, [])
+  }, [isAuthenticated, user?.id])
 
   const selectProjectById = async (id) => {
     if (!id) return
@@ -144,7 +140,7 @@ export function ProjectProvider({ children }) {
       localStorage.setItem(STORAGE_KEY, proj._id)
       return proj
     }
-    // If not found in current projects array, attempt to fetch directly from API
+    // If not found in current projects array, fetch from API
     try {
       const res = await api.get(`/projects/${id}`)
       if (res.data?.project) {
@@ -158,7 +154,7 @@ export function ProjectProvider({ children }) {
         return fetched
       }
     } catch (e) {
-      // project not found in API
+      // project not found or not owned by user
     }
     return null
   }
@@ -176,19 +172,6 @@ export function ProjectProvider({ children }) {
     })
   }
 
-  const toggleDemoMode = () => {
-    if (isDemoMode) {
-      setIsDemoMode(false)
-      fetchLiveProjects()
-    } else {
-      setIsDemoMode(true)
-      setProjects(DEMO_PROJECTS)
-      setSelectedProject(DEMO_PROJECTS[0])
-      localStorage.setItem(STORAGE_KEY, DEMO_PROJECTS[0]._id)
-      setApiError(null)
-    }
-  }
-
   return (
     <ProjectContext.Provider value={{
       projects,
@@ -200,7 +183,6 @@ export function ProjectProvider({ children }) {
       dbStatus,
       isDemoMode,
       apiError,
-      toggleDemoMode,
       refreshProjects: fetchLiveProjects
     }}>
       {children}

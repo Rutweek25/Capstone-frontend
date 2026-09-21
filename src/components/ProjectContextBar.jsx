@@ -1,6 +1,7 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FolderGit2, ShieldCheck, AlertTriangle, AlertOctagon, ArrowUpRight, ChevronDown } from 'lucide-react'
+import { FolderGit2, ShieldCheck, AlertTriangle, AlertOctagon, ArrowUpRight, ChevronDown, FileArchive, ExternalLink } from 'lucide-react'
+import GithubIcon from './GithubIcon'
 import { useProjects } from '../context/ProjectContext'
 
 export default function ProjectContextBar({ activeTab }) {
@@ -81,6 +82,24 @@ export default function ProjectContextBar({ activeTab }) {
             <span className="px-2 py-0.5 rounded-md bg-[#F2F4F7] text-[#344054] font-mono text-[11px] font-medium border border-[#EAECF0]">
               v{version}
             </span>
+            {p.sourceType === 'github' ? (
+              <a 
+                href={p.github?.repositoryUrl ? `${p.github.repositoryUrl}/commit/${p.github?.commitSha}` : '#'}
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-[#111318] text-white font-mono text-[10px] hover:bg-slate-800 transition-colors"
+                title={`GitHub: ${p.github?.owner}/${p.github?.name} (${p.github?.branch})`}
+              >
+                <GithubIcon className="w-2.5 h-2.5" />
+                <span>{p.github?.branch || 'main'}@{p.github?.commitSha ? p.github.commitSha.slice(0, 7) : 'head'}</span>
+                <ExternalLink className="w-2 h-2 text-slate-400" />
+              </a>
+            ) : (
+              <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">
+                <FileArchive className="w-2.5 h-2.5 text-slate-400" />
+                <span>ZIP Upload</span>
+              </span>
+            )}
           </div>
         </div>
       </div>

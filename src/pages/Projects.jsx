@@ -11,8 +11,11 @@ import {
   Layers, 
   Bug, 
   ExternalLink,
-  Activity
+  Activity,
+  FileArchive,
+  Plus
 } from 'lucide-react'
+import GithubIcon from '../components/GithubIcon'
 import { useProjects } from '../context/ProjectContext'
 
 export default function Projects() {
@@ -78,8 +81,8 @@ export default function Projects() {
             onClick={() => navigate('/upload')}
             className="btn-primary text-xs self-start lg:self-auto flex-shrink-0"
           >
-            <UploadCloud className="w-4 h-4 mr-1.5" />
-            <span>Upload New Project ZIP</span>
+            <Plus className="w-4 h-4 mr-1.5" />
+            <span>Add New Project</span>
           </button>
         </div>
       </div>
@@ -154,6 +157,7 @@ export default function Projects() {
               <thead>
                 <tr>
                   <th>Project Name</th>
+                  <th>Source</th>
                   <th>Ecosystem</th>
                   <th>Dependencies</th>
                   <th>Vulnerabilities</th>
@@ -197,6 +201,25 @@ export default function Projects() {
                             </span>
                           </div>
                         </div>
+                      </td>
+
+                      <td>
+                        {proj.sourceType === 'github' ? (
+                          <div className="flex flex-col space-y-0.5">
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono bg-[#111318] text-white w-fit font-bold">
+                              <GithubIcon className="w-2.5 h-2.5" />
+                              <span>GitHub</span>
+                            </span>
+                            <span className="text-[10px] font-mono text-[#667085] truncate max-w-[130px]" title={proj.github?.commitSha}>
+                              {proj.github?.branch || 'main'} @ {proj.github?.commitSha ? proj.github.commitSha.slice(0, 7) : 'head'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-700 border border-slate-200 w-fit font-semibold">
+                            <FileArchive className="w-2.5 h-2.5 text-slate-500" />
+                            <span>ZIP</span>
+                          </span>
+                        )}
                       </td>
 
                       <td>

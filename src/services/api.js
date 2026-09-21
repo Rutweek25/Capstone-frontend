@@ -1,8 +1,14 @@
 import axios from 'axios'
 
-const baseURL = import.meta.env.VITE_API_URL || '/api'
+let baseURL = import.meta.env.VITE_API_URL || '/api'
+if (baseURL.startsWith('http') && !baseURL.endsWith('/api')) {
+  baseURL = `${baseURL}/api`
+}
 
-export default axios.create({
+const api = axios.create({
   baseURL,
-  timeout: 30000
+  timeout: 30000,
+  withCredentials: true // Passes secure HttpOnly session cookies automatically
 })
+
+export default api

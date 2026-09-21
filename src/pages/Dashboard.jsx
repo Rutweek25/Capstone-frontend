@@ -19,8 +19,11 @@ import {
   AlertOctagon,
   Clock,
   Activity,
-  CheckSquare
+  CheckSquare,
+  FileArchive,
+  ExternalLink
 } from 'lucide-react'
+import GithubIcon from '../components/GithubIcon'
 import { useProjects } from '../context/ProjectContext'
 import ProjectContextBar from '../components/ProjectContextBar'
 
@@ -191,6 +194,63 @@ export default function Dashboard() {
             </Link>
           </div>
         </div>
+      </div>
+
+      {/* 2.5 Source Origin Telemetry Card */}
+      <div className="saas-card p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center space-x-3">
+          {p.sourceType === 'github' ? (
+            <>
+              <div className="w-8 h-8 rounded-lg bg-[#111318] text-white flex items-center justify-center flex-shrink-0">
+                <GithubIcon className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="font-bold text-[#101828]">GitHub Repository</span>
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-slate-100 text-slate-700 border border-slate-200">
+                    Public
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2 text-[11px] text-[#667085] mt-0.5">
+                  <span className="font-mono">{p.github?.owner}/{p.github?.name}</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-mono">branch: {p.github?.branch || 'main'}</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-mono">commit: {p.github?.commitSha ? p.github.commitSha.slice(0, 7) : 'latest'}</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
+                <FileArchive className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="font-bold text-[#101828]">Local Archive</span>
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-blue-50 text-blue-700 border border-blue-200">
+                    ZIP Upload
+                  </span>
+                </div>
+                <div className="text-[11px] text-[#667085] mt-0.5 font-mono">
+                  {p.originalFileName || 'project-archive.zip'}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {p.sourceType === 'github' && p.github?.repositoryUrl && (
+          <a
+            href={`${p.github.repositoryUrl}/commit/${p.github?.commitSha}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-secondary text-[11px] py-1 px-2.5 flex items-center space-x-1"
+          >
+            <span>View Commit on GitHub</span>
+            <ExternalLink className="w-3 h-3 text-slate-400" />
+          </a>
+        )}
       </div>
 
       {/* 3. Metric Bento Row */}
