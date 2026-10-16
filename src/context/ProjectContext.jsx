@@ -85,30 +85,59 @@ export function ProjectProvider({ children }) {
       setProjects(fetched)
       setIsDemoMode(Boolean(user?.isDemoAccount))
 
-      const storedId = targetId || localStorage.getItem(STORAGE_KEY)
-      const projectMatch = targetId && typeof targetId === 'object' ? targetId : null
+      // Safe parameter extraction: determine target string ID or project object
+      let targetIdStr = null
+      let projectMatch = null
+
+      if (typeof targetId === 'string' && targetId.trim()) {
+        targetIdStr = targetId.trim()
+      } else if (targetId && typeof targetId === 'object') {
+        // If it's a DOM / React SyntheticEvent (e.g. onClick), ignore it
+        const isEvent = Boolean(targetId.nativeEvent || targetId._reactName || targetId.target)
+        if (!isEvent && typeof targetId._id === 'string' && targetId._id.trim()) {
+          targetIdStr = targetId._id.trim()
+          projectMatch = targetId
+        }
+      }
+
+      // Safe local storage fallback
+      let storedId = targetIdStr
+      if (!storedId) {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY)
+          if (typeof raw === 'string' && raw.trim() && raw !== '[object Object]') {
+            storedId = raw.trim()
+          }
+        } catch (e) {
+          storedId = null
+        }
+      }
 
       if (fetched.length > 0) {
         let active = null
-        if (storedId && !storedId.startsWith('demo-proj-')) {
-          active = fetched.find(p => p._id === storedId)
+        if (typeof storedId === 'string' && storedId && !storedId.startsWith('demo-proj-')) {
+          active = fetched.find(p => p._id === storedId || String(p._id) === storedId)
         }
-        if (!active && projectMatch) {
-          active = projectMatch
+        if (!active && projectMatch && projectMatch._id) {
+          active = fetched.find(p => p._id === projectMatch._id || String(p._id) === String(projectMatch._id)) || projectMatch
         }
         if (!active) {
           active = fetched[0]
         }
         setSelectedProject(active)
-        localStorage.setItem(STORAGE_KEY, active._id)
-      } else if (projectMatch) {
+        if (active && active._id) {
+          localStorage.setItem(STORAGE_KEY, String(active._id))
+        }
+      } else if (projectMatch && projectMatch._id) {
         setSelectedProject(projectMatch)
-        localStorage.setItem(STORAGE_KEY, projectMatch._id)
+        localStorage.setItem(STORAGE_KEY, String(projectMatch._id))
       } else {
         // Authenticated user with 0 projects starts with a pristine workspace
         setProjects([])
         setSelectedProject(null)
-        localStorage.removeItem(STORAGE_KEY)
+        try {
+          localStorage.removeItem(STORAGE_KEY)
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Backend API connection failed:', err.message)
@@ -172,6 +201,27 @@ export function ProjectProvider({ children }) {
     })
   }
 
+  const deleteProject = async (projectId) => {
+    try {
+      await api.delete(`/projects/${projectId}`)
+      setProjects(prev => prev.filter(p => p._id !== projectId))
+      if (selectedProject?._id === projectId) {
+        const remaining = projects.filter(p => p._id !== projectId)
+        if (remaining.length > 0) {
+          setSelectedProject(remaining[0])
+          localStorage.setItem(STORAGE_KEY, remaining[0]._id)
+        } else {
+          setSelectedProject(null)
+          localStorage.removeItem(STORAGE_KEY)
+        }
+      }
+      return { success: true }
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to delete project'
+      return { success: false, message: msg }
+    }
+  }
+
   return (
     <ProjectContext.Provider value={{
       projects,
@@ -179,6 +229,7 @@ export function ProjectProvider({ children }) {
       activeProject: selectedProject,
       setSelectedProject: setCurrentProject,
       selectProjectById,
+      deleteProject,
       loading,
       dbStatus,
       isDemoMode,

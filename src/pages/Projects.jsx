@@ -13,16 +13,30 @@ import {
   ExternalLink,
   Activity,
   FileArchive,
-  Plus
+  Plus,
+  Trash2
 } from 'lucide-react'
 import GithubIcon from '../components/GithubIcon'
 import { useProjects } from '../context/ProjectContext'
 
 export default function Projects() {
-  const { projects, selectedProject, selectProjectById, setSelectedProject } = useProjects()
+  const { projects, selectedProject, selectProjectById, setSelectedProject, deleteProject } = useProjects()
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('ALL')
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
   const navigate = useNavigate()
+
+  const handleDeleteProject = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    const result = await deleteProject(deleteTarget._id)
+    setDeleting(false)
+    setDeleteTarget(null)
+    if (!result.success) {
+      alert(result.message || 'Failed to delete project')
+    }
+  }
 
   const handleOpenProject = (project) => {
     selectProjectById(project._id)
@@ -280,6 +294,13 @@ export default function Projects() {
                           >
                             Open Tree
                           </button>
+                          <button
+                            onClick={() => setDeleteTarget(proj)}
+                            className="p-1.5 rounded-lg text-[#98A2B3] hover:text-rose-600 hover:bg-rose-50 transition-all"
+                            title="Delete project"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -290,6 +311,43 @@ export default function Projects() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl border border-[#EAECF0] w-full max-w-md mx-4 p-6 space-y-5">
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-[#101828]">Delete Project</h3>
+                <p className="text-xs text-[#667085] leading-relaxed">
+                  Are you sure you want to delete <strong className="text-[#101828]">{deleteTarget.projectName || deleteTarget.name}</strong>? 
+                  This will permanently remove the project and all associated analysis data including dependencies, vulnerabilities, SBOM, risk analysis, and compliance reports.
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t border-[#EAECF0] pt-4 flex items-center justify-end space-x-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="btn-secondary text-xs py-2 px-4"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteProject}
+                disabled={deleting}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 transition-all shadow-sm"
+              >
+                {deleting ? 'Deleting...' : 'Delete Project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

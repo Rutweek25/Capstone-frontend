@@ -2,12 +2,13 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
+import gisService from '../services/gisService'
 import { Loader2, AlertCircle, ShieldAlert, Sparkles } from 'lucide-react'
 
 export default function GoogleAuthButton({ isSignup = false }) {
   const { loginWithGoogle, devLogin, authError, clearError, isDemoMode } = useAuth()
   const [loading, setLoading] = useState(false)
-  const [gisLoaded, setGisLoaded] = useState(false)
+  const [gisLoaded, setGisLoaded] = useState(gisService.isLoaded())
   const [clientId, setClientId] = useState(import.meta.env.VITE_GOOGLE_CLIENT_ID || '')
   const googleBtnRef = useRef(null)
   const navigate = useNavigate()
@@ -52,49 +53,35 @@ export default function GoogleAuthButton({ isSignup = false }) {
 
   // Check for window.google GIS SDK availability
   useEffect(() => {
-    const checkGis = () => {
-      if (window.google?.accounts?.id) {
-        setGisLoaded(true)
-        return true
-      }
-      return false
+    if (gisService.isLoaded()) {
+      setGisLoaded(true)
+      return
     }
 
-    if (checkGis()) return
-
     const interval = setInterval(() => {
-      if (checkGis()) clearInterval(interval)
-    }, 200)
+      if (gisService.isLoaded()) {
+        setGisLoaded(true)
+        clearInterval(interval)
+      }
+    }, 150)
 
     return () => clearInterval(interval)
   }, [])
 
-  // Initialize and render the official Google button
+  // Initialize once via singleton and render the official Google button
   useEffect(() => {
     if (!gisLoaded || !isClientIdConfigured || !googleBtnRef.current) return
 
-    try {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: handleCredentialResponse,
-        auto_select: false,
-        cancel_on_tap_outside: true
-      })
+    // 1. Initialize GIS singleton (guaranteed at most once per clientId)
+    gisService.initialize(clientId, handleCredentialResponse)
 
-      // Clean container first
-      if (googleBtnRef.current) {
-        googleBtnRef.current.innerHTML = ''
-        window.google.accounts.id.renderButton(googleBtnRef.current, {
-          theme: 'filled_black',
-          size: 'large',
-          text: isSignup ? 'signup_with' : 'signin_with',
-          shape: 'rectangular',
-          logo_alignment: 'left',
-          width: 320
-        })
-      }
-    } catch (e) {
-      console.warn('GIS button render error:', e)
+    // 2. Render Google button container
+    gisService.renderButton(googleBtnRef.current, {
+      text: isSignup ? 'signup_with' : 'signin_with'
+    })
+
+    return () => {
+      gisService.unregisterHandler(handleCredentialResponse)
     }
   }, [gisLoaded, isClientIdConfigured, isSignup, clientId])
 

@@ -133,11 +133,12 @@ export default function UploadProject() {
       const uploadedProj = res.data.project
       setProject(uploadedProj)
       setSelectedProject(uploadedProj)
-      setMessage('Archive uploaded successfully! Manifest detected.')
+      setMessage('Archive uploaded successfully! Ready to run security analysis pipeline.')
       refreshProjects(uploadedProj._id)
     } catch (err) {
       console.warn('Upload error:', err)
-      setError('Failed to upload archive. Please verify that the file contains package.json.')
+      const errDetail = err.response?.data?.message || err.response?.data?.detail || err.message || 'Failed to upload archive. Please verify that the file contains package.json.'
+      setError(errDetail)
     } finally {
       setUploading(false)
     }
@@ -162,7 +163,8 @@ export default function UploadProject() {
       }, 1000)
     } catch (err) {
       console.warn('Analysis error:', err)
-      setError('Analysis failed. Please inspect server logs or try again.')
+      const errDetail = err.response?.data?.message || err.response?.data?.detail || err.message || 'Analysis failed. Please inspect server logs or try again.'
+      setError(errDetail)
     } finally {
       setAnalyzing(false)
     }

@@ -131,7 +131,7 @@ export default function Navbar() {
 
         {/* Refresh Project Data */}
         <button
-          onClick={refreshProjects}
+          onClick={() => refreshProjects()}
           disabled={loading}
           className="p-1.5 rounded-xl border border-[#E7E9EE] hover:bg-slate-50 text-slate-500 hover:text-[#111318] transition-colors"
           title="Refresh project list"
